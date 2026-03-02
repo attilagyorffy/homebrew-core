@@ -57,6 +57,13 @@ class Julia < Formula
   conflicts_with "juliaup", because: "both install `julia` binaries"
 
   def install
+    # Avoid OOM on arm64 linux runner
+    if OS.linux? && Hardware::CPU.arm64?
+      ENV["JULIA_IMAGE_THREADS"] = "1"
+      ENV["JULIA_CPU_THREADS"] = "1"
+      ENV["JULIA_NUM_PRECOMPILE_TASKS"] = "1"
+    end
+
     # Build documentation available at
     # https://github.com/JuliaLang/julia/blob/v#{version}/doc/build/build.md
     args = %W[
@@ -104,8 +111,12 @@ class Julia < Formula
         # For Apple Silicon, we don't care about other hardware
         cpu_targets << "apple-m1,clone_all"
       else
-        cpu_targets += %w[cortex-a57 thunderx2t99 carmel,clone_all
-                          apple-m1,base(3) neoverse-512tvb,base(3)]
+        # Removed "neoverse-512tvb,base(3)" to avoid sysimage.mk getting killed on CI.
+        # TODO: Try restoring when self-hosted runner is available.
+        cpu_targets += %w[cortex-a57
+                          thunderx2t99
+                          carmel,clone_all
+                          apple-m1,base(3)]
       end
     end
     if Hardware::CPU.intel?
@@ -162,6 +173,9 @@ class Julia < Formula
           ln_sf so.relative_path_from(lib/"julia"), lib/"julia"
         end
       end
+
+      # Remove debug testing library which causes EOFError when parsing ELF
+      rm lib/"julia/libccalltest.so.debug" if Hardware::CPU.arm?
     end
 
     # Create copies of the necessary gcc libraries in `buildpath/"usr/lib"`
